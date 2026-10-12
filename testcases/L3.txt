@@ -1,0 +1,42 @@
+# two shortcuts
+# num rows, num cols
+6, 12
+# rocket jumps
+infinite!
+# min samples
+3
+# gamma
+0.999
+# max episode steps
+500
+# --- tabular Q-learning ---
+# training budget (max training steps, min cumulative training reward)
+500000, -2157000
+# reward targets (min score target, max score target)
+-231.3, -92.5
+# learning speed targets in training steps (min score target, max score target)
+500000, 200500
+# time per training step targets in seconds (min score target, max score target)
+5.7e-05, 1.9e-05
+# --- feature-based Q-learning ---
+# training budget (max training steps, min cumulative training reward)
+30000, -118000
+# reward targets (min score target, max score target)
+-237.8, -95.1
+# learning speed targets in training steps (min score target, max score target)
+16400, 4100
+# time per training step targets in seconds (min score target, max score target)
+0.00027, 9e-05
+# generalisation reward targets (min score target, max score target)
+-227.3, -90.9
+# generalisation start positions (row, col; row, col; ...)
+1,1; 1,10; 3,2; 4,7
+# episode seed (also sets the hidden movement probabilities, action costs and penalties)
+1917
+# grid data
+RRRRRRRRRRRR
+R   P  E   R
+R*LLRRR**RRR
+R   R*C   LR
+RC*C      LR
+RRRRRRRRRRRR

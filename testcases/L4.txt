@@ -1,0 +1,49 @@
+# the long haul
+# num rows, num cols
+13, 14
+# rocket jumps
+infinite!
+# min samples
+1
+# gamma
+0.999
+# max episode steps
+500
+# --- tabular Q-learning ---
+# training budget (max training steps, min cumulative training reward)
+500000, -2356000
+# reward targets (min score target, max score target)
+-241.0, -96.4
+# learning speed targets in training steps (min score target, max score target)
+402000, 100500
+# time per training step targets in seconds (min score target, max score target)
+5.7e-05, 1.9e-05
+# --- feature-based Q-learning ---
+# training budget (max training steps, min cumulative training reward)
+30000, -118000
+# reward targets (min score target, max score target)
+-242.3, -96.9
+# learning speed targets in training steps (min score target, max score target)
+6800, 1700
+# time per training step targets in seconds (min score target, max score target)
+0.00026, 8.7e-05
+# generalisation reward targets (min score target, max score target)
+-226.8, -90.7
+# generalisation start positions (row, col; row, col; ...)
+2,5; 6,3; 6,11; 10,6
+# episode seed (also sets the hidden movement probabilities, action costs and penalties)
+1917
+# grid data
+RRRRRRRRRRRRRR
+RPRRLRLRLRLRER 
+R         C  R
+R*RLRLRLRLRR*R
+R*RRRRRRRRRR*R
+R*RRRLRRRLRR*R
+R         C  R
+R*RLRRRLRRRR*R
+R*RRRRRRRRRR*R
+R*RRRRRRLRRR*R
+R         C  R
+R RRRLRRRRRR R
+RRRRRRRRRRRRRR
