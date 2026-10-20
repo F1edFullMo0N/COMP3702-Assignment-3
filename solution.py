@@ -13,7 +13,7 @@ wish. You may also create additional source files and import to this file if you
 
 COMP3702 Assignment 3 "CrystalRover" Support Code
 
-Last updated 07/10/2026
+Last updated 16/10/2026
 """
 
 
@@ -111,6 +111,9 @@ class Solver:
         #  information about the map that your features use) here. This method is not timed, so it is the place for
         #  precomputation, but it must not call perform_action (training belongs in fq_train_episode) and must finish
         #  within 30 seconds, or the phase scores zero.
+        #
+        # Your weights must start all 0 or all 1 (e.g. [0.0] * number of features) and be learned during training:
+        #  starting from hand-picked weights scores zero for the phase.
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #

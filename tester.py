@@ -5,7 +5,7 @@ import os
 from game_env import GameEnv, TrainingBudgetExhausted
 from harness import PLAN_TYPES, PLAN_NAMES, MAX_FEATURES, InvalidActionSelected, TrainingRuleBroken, \
     get_phase_value, get_solver_method, get_learning_threshold, get_step_seed, seed_solver_randomness, train_agent, \
-    evaluate_final_policy, evaluate_generalisation, check_feature_vectors
+    evaluate_final_policy, evaluate_generalisation, check_feature_vectors, check_initial_weights
 from solution import Solver
 
 """
@@ -18,7 +18,7 @@ here are computed the same way as the ones you are marked on.
 
 COMP3702 Assignment 3 "CrystalRover" Support Code
 
-Last updated 07/10/2026
+Last updated 16/10/2026
 """
 
 VISUALISE_TIME_PER_STEP = 0.7
@@ -79,10 +79,11 @@ def format_evaluation_report(control_env, plan_type, average_reward, solved_coun
     return msg
 
 
-def format_feature_report(control_env, solver, select_action):
+def format_feature_report(control_env, solver, select_action, result):
     feature_count, problem = check_feature_vectors(control_env, solver.fq_get_features)
     if problem is not None:
         return f'Feature vector check failed: {problem}\n'
+    check_initial_weights(solver, result.initial_numeric_arrays, feature_count)
     msg = f'Feature vector length: {feature_count}    (at most {MAX_FEATURES})\n'
     generalisation_reward = evaluate_generalisation(control_env, select_action)
     msg += f'Generalisation: average episode reward from {len(control_env.generalisation_start_positions)} ' \
@@ -141,7 +142,7 @@ def run_test(plan_type, testcase_file, visualise):
     msg += format_training_report(control_env, plan_type, result)
     msg += format_evaluation_report(control_env, plan_type, average_reward, solved_count)
     if plan_type == 'fq':
-        msg += format_feature_report(control_env, solver, select_action)
+        msg += format_feature_report(control_env, solver, select_action, result)
     print(msg)
 
     if visualise:

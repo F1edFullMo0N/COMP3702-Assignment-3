@@ -14,7 +14,7 @@ same way. You should not need to modify this file.
 
 COMP3702 Assignment 3 "CrystalRover" Support Code
 
-Last updated 09/10/2026
+Last updated 16/10/2026
 """
 
 EPISODE_TRIALS = 1000           # trials used to evaluate the final greedy policy
@@ -29,6 +29,10 @@ LEARNED_REWARD_FRACTION = 0.75
 MAX_FEATURES = 256
 
 INITIALISE_TIME_LIMIT = 30      # seconds a *_initialise method may spend precomputing (this time is not marked)
+
+INITIAL_WEIGHT_VALUES = (0.0, 1.0)              # feature weights must start all equal to one of these
+MAX_WEIGHT_ARRAY_SIZE = 16 * MAX_FEATURES       # room for a weight vector per action
+MAX_WEIGHT_DICT_ENTRIES = 64                    # a dict of weight vectors (e.g. per action) is small, unlike a Q-table
 
 PLAN_TYPES = ['ql', 'fq']
 PLAN_NAMES = {'ql': 'Tabular Q-learning', 'fq': 'Feature-based Q-learning'}
@@ -63,6 +67,7 @@ class TrainingResult:
         self.learned_at_steps = None
         self.checkpoint_history = []    # list of (training steps used, average checkpoint reward)
         self.ended_without_progress = False
+        self.initial_numeric_arrays = {}    # numeric arrays the solver held after fq_initialise, see check_initial_weights
 
     def get_time_per_step(self):
         if self.steps_used == 0:
@@ -258,6 +263,8 @@ def train_agent(training_env, control_env, solver, plan_type, budget_exception):
     result = TrainingResult()
 
     initialise_solver(training_env, solver, plan_type, budget_exception)
+    if plan_type == 'fq':
+        result.initial_numeric_arrays = find_numeric_arrays(solver)
     budget_left = True
     while budget_left:
         steps_before = training_env.training_steps_used
@@ -327,3 +334,131 @@ def check_feature_vectors(control_env, get_features):
             return None, problem
         feature_count = len(features)
     return feature_count, None
+
+
+# === Initial weights ==================================================================================================
+
+def is_plain_number(value):
+    return isinstance(value, numbers.Real) and not isinstance(value, bool)
+
+
+def to_sequence(value):
+    """
+    :return: value as a list if it is a list, tuple or numpy array, otherwise None
+    """
+    if hasattr(value, 'shape') and hasattr(value, 'tolist'):
+        if getattr(value, 'size', 0) > MAX_WEIGHT_ARRAY_SIZE:
+            return None
+        value = value.tolist()
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return None
+
+
+def flatten_rows(rows):
+    """
+    :return: (shape, values) of a list of equally long rows of numbers, or None if it is not one
+    """
+    rows = [to_sequence(row) for row in rows]
+    if any(row is None or len(row) != len(rows[0]) for row in rows):
+        return None
+    if len(rows) * len(rows[0]) > MAX_WEIGHT_ARRAY_SIZE:
+        return None
+    values = [value for row in rows for value in row]
+    if not all(is_plain_number(value) for value in values):
+        return None
+    return (len(rows), len(rows[0])), tuple(float(value) for value in values)
+
+
+def flatten_numeric_array(value):
+    """
+    :return: (shape, values) of a 1-D or 2-D array of numbers (list, tuple or numpy array), or None if value is not one
+    """
+    sequence = to_sequence(value)
+    if sequence is None or len(sequence) == 0 or len(sequence) > MAX_WEIGHT_ARRAY_SIZE:
+        return None
+    if all(is_plain_number(item) for item in sequence):
+        return (len(sequence),), tuple(float(item) for item in sequence)
+    return flatten_rows(sequence)
+
+
+def get_attribute_entries(value):
+    """
+    The attribute value itself, and the values of a small dict (e.g. weights per action), each with its key.
+    """
+    entries = [(None, value)]
+    if isinstance(value, dict) and len(value) <= MAX_WEIGHT_DICT_ENTRIES:
+        entries += list(value.items())
+    return entries
+
+
+def find_numeric_arrays(solver):
+    """
+    Numeric arrays the solver holds, in attributes or in small dicts. Taken right after fq_initialise, these include
+    the initial feature weights, wherever and however the solver stores them.
+    :return: dict mapping (attribute name, dict key or None) to (shape, values)
+    """
+    arrays = {}
+    for name, value in getattr(solver, '__dict__', {}).items():
+        for key, entry in get_attribute_entries(value):
+            array = flatten_numeric_array(entry)
+            if array is not None:
+                arrays[(name, key)] = array
+    return arrays
+
+
+def get_solver_entry(solver, name, key):
+    value = getattr(solver, name, None)
+    if key is None:
+        return value
+    if not isinstance(value, dict):
+        return None
+    return value.get(key)
+
+
+def find_initial_weights(solver, initial_arrays, feature_count):
+    """
+    The weights among the arrays held after fq_initialise: those with a dimension of feature_count values that training
+    changed. Arrays training left alone (e.g. precomputed map data) are not weights.
+    :return: dict mapping (attribute name, dict key or None) to the initial values
+    """
+    weights = {}
+    for (name, key), (shape, values) in initial_arrays.items():
+        if feature_count not in shape:
+            continue
+        current = flatten_numeric_array(get_solver_entry(solver, name, key))
+        if current is not None and current != (shape, values):
+            weights[(name, key)] = values
+    return weights
+
+
+def is_allowed_start(values):
+    return any(all(value == start for value in values) for start in INITIAL_WEIGHT_VALUES)
+
+
+def describe_weight_location(name, key):
+    if key is None:
+        return f'self.{name}'
+    return f'self.{name}[{key!r}]'
+
+
+def describe_values(values):
+    shown = ', '.join(f'{value:g}' for value in values[:12])
+    if len(values) > 12:
+        shown += ', ...'
+    return f'[{shown}]'
+
+
+def check_initial_weights(solver, initial_arrays, feature_count):
+    """
+    Check that the feature weights started all 0 or all 1, so that the agent learned them instead of starting from
+    hand-picked values.
+    :param initial_arrays: TrainingResult.initial_numeric_arrays
+    :raise TrainingRuleBroken: if fq_initialise set the weights to anything else
+    """
+    for (name, key), values in find_initial_weights(solver, initial_arrays, feature_count).items():
+        if is_allowed_start(values):
+            continue
+        raise TrainingRuleBroken(f'fq_initialise set the weights in {describe_weight_location(name, key)} to '
+                                 f'{describe_values(values)}, but feature weights must start all 0 or all 1 and be '
+                                 f'learned during training.')

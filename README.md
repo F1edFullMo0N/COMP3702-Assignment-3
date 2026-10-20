@@ -164,6 +164,9 @@ The tester and autograder train your agent by calling `ql_initialise()` (or `fq_
 - `ql_initialise()` and `fq_initialise()` are not timed, so they are the place for precomputation, but they must not
   call `perform_action` and must finish within 30 seconds. Otherwise the phase scores zero (`tester.py` reports it as
   an error).
+- Feature weights must start all 0 or all 1 (for example `[0.0] * feature_count`, or one such vector per action) and
+  be learned during training. Any array with one value per feature that your solver holds after `fq_initialise()` and
+  that training changes must have started that way, or the phase scores zero (`tester.py` reports it as an error).
 - Your agent must learn from experience. It may use the map (for example distances, or what lies in an action's
   direction) and the rewards it receives, but must not read the environment's private (hidden) parameters or call
   its private methods: how often actions go wrong, what they cost and how bad collisions and lava are have to be
