@@ -87,7 +87,66 @@ class Solver:
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
-        pass
+        state = self.game_env.get_init_state()
+        episode_reward = 0.0
+
+        # Decay epsilon based on training progress
+        budget = self.game_env.training_step_budget
+        if budget is None:
+            epsilon = self.epsilon
+        else:
+            progress = min(
+                1.0,
+                self.game_env.training_steps_used / budget
+            )
+            epsilon = max(
+                0.05,
+                self.epsilon * (1.0 - progress)
+            )
+
+        for _ in range(self.game_env.max_episode_steps):
+
+            # Stop if episode has ended
+            if (self.game_env.is_terminal(state)
+                    or episode_reward <= self.game_env.ql_reward_min_tgt):
+                break
+
+            # Epsilon-greedy action selection
+            actions = self.game_env.get_valid_actions(state)
+
+            if random.random() < epsilon:
+                action = random.choice(actions)
+            else:
+                action = max(
+                    actions,
+                    key=lambda a: self.q_table.get((state, a), 0.0)
+                )
+
+            # Perform action
+            next_state, reward, _ = self.game_env.perform_action(
+                state, action
+            )
+
+            # Q-learning update
+            old_q = self.q_table.get((state, action), 0.0)
+
+            if self.game_env.is_terminal(next_state):
+                next_best_q = 0.0
+            else:
+                next_best_q = max(
+                    self.q_table.get((next_state, a), 0.0)
+                    for a in self.game_env.get_valid_actions(next_state)
+                )
+
+            target = reward + self.game_env.gamma * next_best_q
+
+            self.q_table[(state, action)] = (
+                old_q + self.alpha * (target - old_q)
+            )
+
+            # Move to next state
+            state = next_state
+            episode_reward += reward
 
     def ql_select_action(self, state: GameState):
         """
