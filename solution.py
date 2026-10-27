@@ -70,7 +70,7 @@ class Solver:
         #
         
         self.q_table = {}
-        self.alpha = 0.1
+        self.alpha = 0.2
         self.epsilon = 0.3
 
     def ql_train_episode(self):
@@ -162,7 +162,6 @@ class Solver:
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
         
-    def ql_select_action(self, state: GameState):
         actions = self.game_env.get_valid_actions(state)
 
         return max(
