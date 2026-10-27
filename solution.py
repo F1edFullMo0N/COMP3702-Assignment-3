@@ -227,69 +227,6 @@ class Solver:
             self.fq_dist[source]=seen
         self.fq_route_cache = {}
 
-    def fq_remaining_distance(self, pos, status):
-        """Estimate shortest remaining route through enough crystals to a launch site."""
-        key=(pos,status)
-        if key in self.fq_route_cache:
-            return self.fq_route_cache[key]
-        collected=sum(status)
-        need=max(0, self.game_env.min_samples - collected)
-        if need == 0:
-            ans=min((self.fq_dist.get(pos, {}).get(e, 999) for e in self.fq_exits),default=999)
-        else:
-            # Recursion only traverses a small *static map* collection task.
-            ans=999
-            ds=self.fq_dist.get(pos, {})
-            for i,c in enumerate(self.fq_crystals):
-                if status[i]:
-                    continue
-                d=ds.get(c,999)
-                if d >= 999:continue
-                new_status=status[:i]+(1,)+status[i+1:]
-                ans=min(ans, d+self.fq_remaining_distance(c,new_status))
-        self.fq_route_cache[key]=ans
-        return ans
-
-    def fq_simulate_geometry(self, state, action, length=None):
-        """Local terrain-only look-ahead for constructing descriptive features.
-
-        Not used for transition planning or estimating hidden movement probabilities.
-        """
-        if length is None:
-            length=2 if action[0]=='b' else 1
-        pos=(state.row,state.col)
-        status=state.crystal_status
-        dr,dc=self.fq_dirs[action[1]]
-        hit_rock=0
-        hit_lava=0
-        for _ in range(length):
-            new=(pos[0]+dr,pos[1]+dc)
-            if (new[0] < 0 or new[0] >= self.fq_rows or new[1] < 0 or new[1] >= self.fq_cols
-                    or self.fq_grid[new[0]][new[1]]==self.game_env.ROCK_TILE):
-                hit_rock=1
-                break
-            pos=new
-            if pos in self.fq_lava:
-                hit_lava=1
-                break
-            if self.fq_grid[pos[0]][pos[1]]==self.game_env.CRATER_TILE:
-                break
-        acquired=0
-        if not hit_lava and pos in self.fq_crystal_index:
-            i=self.fq_crystal_index[pos]
-            if not status[i]:
-                acquired=1
-                status=status[:i]+(1,)+status[i+1:]
-        crater=1 if self.fq_grid[pos[0]][pos[1]] == self.game_env.CRATER_TILE else 0
-        finish=1 if pos in self.fq_exits and sum(status)>=self.game_env.min_samples else 0
-        return pos,status,hit_rock,hit_lava,crater,acquired,finish
-
-    def fq_value(self, state: GameState, action):
-        features = self.fq_get_features(state, action)
-        return sum(
-            w * f
-            for w, f in zip(self.fq_weights, features)
-        )
 
     def fq_get_features(self, state: GameState, action):
         """
@@ -416,3 +353,68 @@ class Solver:
     # TODO: Add any additional methods here
     #
     #
+    
+    def fq_remaining_distance(self, pos, status):
+        """Estimate shortest remaining route through enough crystals to a launch site."""
+        key=(pos,status)
+        if key in self.fq_route_cache:
+            return self.fq_route_cache[key]
+        collected=sum(status)
+        need=max(0, self.game_env.min_samples - collected)
+        if need == 0:
+            ans=min((self.fq_dist.get(pos, {}).get(e, 999) for e in self.fq_exits),default=999)
+        else:
+            # Recursion only traverses a small *static map* collection task.
+            ans=999
+            ds=self.fq_dist.get(pos, {})
+            for i,c in enumerate(self.fq_crystals):
+                if status[i]:
+                    continue
+                d=ds.get(c,999)
+                if d >= 999:continue
+                new_status=status[:i]+(1,)+status[i+1:]
+                ans=min(ans, d+self.fq_remaining_distance(c,new_status))
+        self.fq_route_cache[key]=ans
+        return ans
+
+    def fq_simulate_geometry(self, state, action, length=None):
+        """Local terrain-only look-ahead for constructing descriptive features.
+
+        Not used for transition planning or estimating hidden movement probabilities.
+        """
+        if length is None:
+            length=2 if action[0]=='b' else 1
+        pos=(state.row,state.col)
+        status=state.crystal_status
+        dr,dc=self.fq_dirs[action[1]]
+        hit_rock=0
+        hit_lava=0
+        for _ in range(length):
+            new=(pos[0]+dr,pos[1]+dc)
+            if (new[0] < 0 or new[0] >= self.fq_rows or new[1] < 0 or new[1] >= self.fq_cols
+                    or self.fq_grid[new[0]][new[1]]==self.game_env.ROCK_TILE):
+                hit_rock=1
+                break
+            pos=new
+            if pos in self.fq_lava:
+                hit_lava=1
+                break
+            if self.fq_grid[pos[0]][pos[1]]==self.game_env.CRATER_TILE:
+                break
+        acquired=0
+        if not hit_lava and pos in self.fq_crystal_index:
+            i=self.fq_crystal_index[pos]
+            if not status[i]:
+                acquired=1
+                status=status[:i]+(1,)+status[i+1:]
+        crater=1 if self.fq_grid[pos[0]][pos[1]] == self.game_env.CRATER_TILE else 0
+        finish=1 if pos in self.fq_exits and sum(status)>=self.game_env.min_samples else 0
+        return pos,status,hit_rock,hit_lava,crater,acquired,finish
+
+    def fq_value(self, state: GameState, action):
+        features = self.fq_get_features(state, action)
+        return sum(
+            w * f
+            for w, f in zip(self.fq_weights, features)
+        )
+
