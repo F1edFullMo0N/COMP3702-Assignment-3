@@ -187,7 +187,46 @@ class Solver:
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
-        pass
+        
+        self.fq_alpha = 0.10
+        self.fq_epsilon = 0.40
+        # Labels are useful for report Q3(b).
+        self.fq_feature_names = [
+            "Bias", "Negative remaining-route distance", "Route progress",
+            "Nominal lava exposure", "Perpendicular drift lava exposure",
+            "Double movement lava exposure", "Rock collision exposure",
+            "Crater landing", "Boost action", "Jump action",
+            "Walk action", "Crystal acquired", "Finish route",
+            "Left", "Right", "Up", "Down",
+        ]
+        self.fq_weights = [0.0] * len(self.fq_feature_names)
+        self.fq_feature_cache = {}
+        env = self.game_env
+        self.fq_crystals = tuple(env.crystal_positions)
+        self.fq_exits = tuple(env.launch_positions)
+        self.fq_crystal_index = {xy:i for i,xy in enumerate(self.fq_crystals)}
+        self.fq_grid = env.grid_data
+        self.fq_lava = set(env.lava_positions)
+        self.fq_rows, self.fq_cols = env.n_rows, env.n_cols
+        self.fq_dirs = {'l': (0,-1), 'r': (0,1), 'u': (-1,0), 'd': (1,0)}
+        self.fq_scale = float(max(env.n_cols + env.n_rows, 1))
+        walkable = {(r,c) for r in range(env.n_rows) for c in range(env.n_cols)
+                    if env.grid_data[r][c] != env.ROCK_TILE and (r,c) not in self.fq_lava}
+        # Static map distance only: no learned/hidden transition probabilities.
+        self.fq_dist = {}
+        for source in walkable:
+            seen = {source:0}
+            queue=deque([source])
+            while queue:
+                r,c=queue.popleft()
+                for dr,dc in self.fq_dirs.values():
+                    neighbor=(r+dr,c+dc)
+                    if neighbor in walkable and neighbor not in seen:
+                        seen[neighbor]=seen[(r,c)]+1
+                        queue.append(neighbor)
+            self.fq_dist[source]=seen
+        self.fq_route_cache = {}
+
 
     def fq_get_features(self, state: GameState, action):
         """
@@ -214,7 +253,37 @@ class Solver:
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
-        pass
+        
+        state=self.game_env.get_init_state()
+        episode_reward=0.0
+        env=self.game_env
+        budget=env.training_step_budget
+        progress=min(1.0,env.training_steps_used/budget) if budget else 0.0
+        epsilon=max(0.05,self.fq_epsilon*(1.0-progress))
+        for _ in range(env.max_episode_steps):
+            if env.is_terminal(state) or episode_reward<=env.fq_reward_min_tgt:
+                break
+            actions=env.get_valid_actions(state)
+            if random.random()<epsilon:
+                action=random.choice(actions)
+            else:
+                action=self.fq_select_action(state)
+            features=self.fq_get_features(state,action)
+            old_q=sum(w*f for w,f in zip(self.fq_weights,features))
+            next_state,reward,_=env.perform_action(state,action)
+            episode_reward+=reward
+            if env.is_terminal(next_state):
+                target=reward
+            else:
+                next_actions=env.get_valid_actions(next_state)
+                target=reward+env.gamma*max(self.fq_value(next_state,a) for a in next_actions)
+            td_error=max(-750.0,min(750.0,target-old_q))
+            norm=sum(f*f for f in features)
+            if norm>0:
+                step=self.fq_alpha*td_error/norm
+                self.fq_weights=[w+step*f for w,f in zip(self.fq_weights,features)]
+            state=next_state
+
 
     def fq_select_action(self, state: GameState):
         """
@@ -228,7 +297,9 @@ class Solver:
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
-        pass
+        
+        actions=self.game_env.get_valid_actions(state)
+        return max(actions,key=lambda a:self.fq_value(state,a))
 
     # === Helper Methods ===============================================================================================
     #
