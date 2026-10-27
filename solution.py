@@ -328,6 +328,10 @@ class Solver:
             if norm>0:
                 step=self.fq_alpha*td_error/norm
                 self.fq_weights=[w+step*f for w,f in zip(self.fq_weights,features)]
+                # Risk features are non-positive; keep their weights non-negative
+                # so they cannot increase the value of risky actions.
+                for i in (3, 4, 5):
+                    self.fq_weights[i] = max(0.0, self.fq_weights[i])
             state=next_state
 
 
