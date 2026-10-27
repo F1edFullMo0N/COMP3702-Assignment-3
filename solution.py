@@ -3,7 +3,7 @@ import time
 import random
 from game_env import GameEnv
 from game_state import GameState
-
+from collections import deque
 """
 solution.py
 
@@ -227,6 +227,69 @@ class Solver:
             self.fq_dist[source]=seen
         self.fq_route_cache = {}
 
+    def fq_remaining_distance(self, pos, status):
+        """Estimate shortest remaining route through enough crystals to a launch site."""
+        key=(pos,status)
+        if key in self.fq_route_cache:
+            return self.fq_route_cache[key]
+        collected=sum(status)
+        need=max(0, self.game_env.min_samples - collected)
+        if need == 0:
+            ans=min((self.fq_dist.get(pos, {}).get(e, 999) for e in self.fq_exits),default=999)
+        else:
+            # Recursion only traverses a small *static map* collection task.
+            ans=999
+            ds=self.fq_dist.get(pos, {})
+            for i,c in enumerate(self.fq_crystals):
+                if status[i]:
+                    continue
+                d=ds.get(c,999)
+                if d >= 999:continue
+                new_status=status[:i]+(1,)+status[i+1:]
+                ans=min(ans, d+self.fq_remaining_distance(c,new_status))
+        self.fq_route_cache[key]=ans
+        return ans
+
+    def fq_simulate_geometry(self, state, action, length=None):
+        """Local terrain-only look-ahead for constructing descriptive features.
+
+        Not used for transition planning or estimating hidden movement probabilities.
+        """
+        if length is None:
+            length=2 if action[0]=='b' else 1
+        pos=(state.row,state.col)
+        status=state.crystal_status
+        dr,dc=self.fq_dirs[action[1]]
+        hit_rock=0
+        hit_lava=0
+        for _ in range(length):
+            new=(pos[0]+dr,pos[1]+dc)
+            if (new[0] < 0 or new[0] >= self.fq_rows or new[1] < 0 or new[1] >= self.fq_cols
+                    or self.fq_grid[new[0]][new[1]]==self.game_env.ROCK_TILE):
+                hit_rock=1
+                break
+            pos=new
+            if pos in self.fq_lava:
+                hit_lava=1
+                break
+            if self.fq_grid[pos[0]][pos[1]]==self.game_env.CRATER_TILE:
+                break
+        acquired=0
+        if not hit_lava and pos in self.fq_crystal_index:
+            i=self.fq_crystal_index[pos]
+            if not status[i]:
+                acquired=1
+                status=status[:i]+(1,)+status[i+1:]
+        crater=1 if self.fq_grid[pos[0]][pos[1]] == self.game_env.CRATER_TILE else 0
+        finish=1 if pos in self.fq_exits and sum(status)>=self.game_env.min_samples else 0
+        return pos,status,hit_rock,hit_lava,crater,acquired,finish
+
+    def fq_value(self, state: GameState, action):
+        features = self.fq_get_features(state, action)
+        return sum(
+            w * f
+            for w, f in zip(self.fq_weights, features)
+        )
 
     def fq_get_features(self, state: GameState, action):
         """
@@ -241,7 +304,53 @@ class Solver:
         #
         # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
         #
-        pass
+        
+        key=(state,action)
+        if key in self.fq_feature_cache:
+            return self.fq_feature_cache[key]
+        pos=(state.row,state.col)
+        status=state.crystal_status
+        new_pos,new_status,collide,lava,crater,acquired,finish = self.fq_simulate_geometry(state,action)
+        d_before=self.fq_remaining_distance(pos,status)
+        d_after=self.fq_remaining_distance(new_pos,new_status)
+        # For boost, assess 0..4 tile outcomes as geometry indicators, NOT a probability model.
+        if action[0]=='b':
+            raw=[self.fq_simulate_geometry(state,action,length=i) for i in range(5)]
+            nominal_lava=sum(x[3] for x in raw)/5.0
+            collide=sum(x[2] for x in raw)/5.0
+        else:
+            nominal_lava=float(lava)
+        # A perpendicular deviation can land in a hazard even for a safe intended move.
+        drifts=[]
+        for d in (('u','d') if action[1] in ('l','r') else ('l','r')):
+            alternate=action[0]+d
+            if alternate[0]=='b':
+                raw=[self.fq_simulate_geometry(state,alternate,length=i) for i in range(5)]
+                drifts.append(sum(x[3] for x in raw)/5.0)
+            else:
+                drifts.append(float(self.fq_simulate_geometry(state,alternate)[3]))
+        drift_lava=sum(drifts)/2.0
+        # Possible second movement from approximate landing position.
+        dummy=GameState(new_pos[0],new_pos[1],new_status)
+        doublerisk=0.0
+        if not lava and not finish:
+            doublerisk=float(self.fq_simulate_geometry(dummy, action)[3])
+        dist_penalty=-min(d_after,100)/self.fq_scale
+        progress=max(-4,min(4,d_before-d_after))/4.0
+        hazard_scale=100.0
+        features=[
+            1.0, dist_penalty, progress,
+            -hazard_scale*nominal_lava,
+            -hazard_scale*drift_lava,
+            -hazard_scale*doublerisk,
+            -float(collide), -float(crater),
+            float(action[0]=='b'), float(action[0]=='j'), float(action[0]=='w'),
+            float(acquired), float(finish),
+            float(action[1]=='l'),float(action[1]=='r'),
+            float(action[1]=='u'),float(action[1]=='d')
+        ]
+        self.fq_feature_cache[key]=features
+        return features
 
     def fq_train_episode(self):
         """
